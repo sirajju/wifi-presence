@@ -1,0 +1,22 @@
+[Unit]
+Description=wifi-presence — LAN presence tracker for wa-bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/wifi-presence
+ExecStart=%h/.local/bin/presence
+EnvironmentFile=-%h/wifi-presence/.env
+Restart=on-failure
+RestartSec=5
+# Quiet, low-priority — this is a background sampler.
+Nice=5
+# Confine the process a little.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=%h/wifi-presence/data
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
