@@ -20,10 +20,11 @@ import (
 )
 
 type Sighting struct {
-	MAC    string
-	IP     string
-	Vendor string
-	TS     time.Time
+	MAC      string
+	IP       string
+	Vendor   string
+	Hostname string // best-effort, often empty for phones with privacy randomization
+	TS       time.Time
 }
 
 type Scanner struct {
@@ -60,16 +61,22 @@ func New(ifaceName, subnet string, log zerolog.Logger) (*Scanner, error) {
 func (s *Scanner) InterfaceName() string { return s.iface.Name }
 func (s *Scanner) Subnet() string        { return s.ipNet.String() }
 
-// Scan sweeps the subnet, waits briefly, reads /proc/net/arp, returns sightings.
+// Scan sweeps the subnet, waits briefly, reads /proc/net/arp, then tries to
+// resolve a hostname per sighting (NetBIOS + reverse DNS). Hostname is
+// best-effort; an empty value just means "didn't find one this round".
 func (s *Scanner) Scan(ctx context.Context) ([]Sighting, error) {
 	s.sweep(ctx)
-	// Give the kernel a moment for late ARP replies to land.
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-time.After(s.settleDelay):
 	}
-	return s.readARP()
+	sightings, err := s.readARP()
+	if err != nil || len(sightings) == 0 {
+		return sightings, err
+	}
+	resolveHostnames(ctx, sightings)
+	return sightings, nil
 }
 
 // sweep opens a short-timeout TCP dial to every host in the /24. The dials go to

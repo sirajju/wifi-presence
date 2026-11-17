@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -19,6 +20,7 @@ type Device struct {
 	Label     string
 	Owner     string
 	Vendor    string
+	Hostname  string // LAN name (NetBIOS/DHCP/DNS). Sticky — never overwritten with empty.
 	LastIP    string
 	FirstSeen time.Time
 	LastSeen  time.Time
@@ -86,6 +88,7 @@ func migrate(db *sql.DB) error {
             label      TEXT NOT NULL DEFAULT '',
             owner      TEXT NOT NULL DEFAULT '',
             vendor     TEXT NOT NULL DEFAULT '',
+            hostname   TEXT NOT NULL DEFAULT '',
             last_ip    TEXT NOT NULL DEFAULT '',
             first_seen INTEGER NOT NULL,
             last_seen  INTEGER NOT NULL
@@ -105,37 +108,46 @@ func migrate(db *sql.DB) error {
 			return fmt.Errorf("migrate: %w", err)
 		}
 	}
+	// Idempotent column add for DBs created before the hostname column existed.
+	// SQLite doesn't support "ADD COLUMN IF NOT EXISTS", so swallow the dup error.
+	if _, err := db.Exec(`ALTER TABLE devices ADD COLUMN hostname TEXT NOT NULL DEFAULT ''`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("migrate hostname column: %w", err)
+		}
+	}
 	return nil
 }
 
-// UpsertSighting records that a MAC was seen at ts with ip. Returns (isNew, vendorFilled, error).
-// isNew is true when this MAC had never been seen before.
-func (s *Store) UpsertSighting(ctx context.Context, mac, ip, vendor string, ts time.Time) (isNew bool, err error) {
+// UpsertSighting records that a MAC was seen at ts with ip/vendor/hostname.
+// Returns (isNew, error). isNew is true when this MAC had never been seen.
+//
+// vendor and hostname are both "sticky": once a non-empty value has been
+// recorded, it stays — a later blank reading never clobbers it. That's what
+// lets us keep a hostname after the router reboots and loses its lease.
+func (s *Store) UpsertSighting(ctx context.Context, mac, ip, vendor, hostname string, ts time.Time) (isNew bool, err error) {
 	tsUnix := ts.Unix()
 	var existed int
 	err = s.db.QueryRowContext(ctx, `SELECT 1 FROM devices WHERE mac = ?`, mac).Scan(&existed)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		_, err = s.db.ExecContext(ctx, `
-            INSERT INTO devices(mac, vendor, last_ip, first_seen, last_seen)
-            VALUES(?, ?, ?, ?, ?)
-        `, mac, vendor, ip, tsUnix, tsUnix)
+            INSERT INTO devices(mac, vendor, hostname, last_ip, first_seen, last_seen)
+            VALUES(?, ?, ?, ?, ?, ?)
+        `, mac, vendor, hostname, ip, tsUnix, tsUnix)
 		return true, err
 	case err != nil:
 		return false, err
 	}
-	// Row exists — update last_seen, last_ip, and vendor if we now have one.
-	if vendor != "" {
-		_, err = s.db.ExecContext(ctx, `
-            UPDATE devices SET last_seen = ?, last_ip = ?,
-                vendor = CASE WHEN vendor = '' THEN ? ELSE vendor END
-            WHERE mac = ?
-        `, tsUnix, ip, vendor, mac)
-	} else {
-		_, err = s.db.ExecContext(ctx, `
-            UPDATE devices SET last_seen = ?, last_ip = ? WHERE mac = ?
-        `, tsUnix, ip, mac)
-	}
+	// Row exists — always update last_seen + last_ip, and fill vendor/hostname
+	// only when we have a non-empty value and the existing one is empty.
+	_, err = s.db.ExecContext(ctx, `
+        UPDATE devices SET
+            last_seen = ?,
+            last_ip   = ?,
+            vendor    = CASE WHEN vendor   = '' AND ? <> '' THEN ? ELSE vendor   END,
+            hostname  = CASE WHEN hostname = '' AND ? <> '' THEN ? ELSE hostname END
+        WHERE mac = ?
+    `, tsUnix, ip, vendor, vendor, hostname, hostname, mac)
 	return false, err
 }
 
@@ -152,7 +164,7 @@ func (s *Store) SetLabel(ctx context.Context, mac, label, owner string) error {
 // ListDevices returns every known device, most-recently-seen first.
 func (s *Store) ListDevices(ctx context.Context) ([]Device, error) {
 	rows, err := s.db.QueryContext(ctx, `
-        SELECT mac, label, owner, vendor, last_ip, first_seen, last_seen
+        SELECT mac, label, owner, vendor, hostname, last_ip, first_seen, last_seen
         FROM devices ORDER BY last_seen DESC
     `)
 	if err != nil {
@@ -163,7 +175,7 @@ func (s *Store) ListDevices(ctx context.Context) ([]Device, error) {
 	for rows.Next() {
 		var d Device
 		var first, last int64
-		if err := rows.Scan(&d.MAC, &d.Label, &d.Owner, &d.Vendor, &d.LastIP, &first, &last); err != nil {
+		if err := rows.Scan(&d.MAC, &d.Label, &d.Owner, &d.Vendor, &d.Hostname, &d.LastIP, &first, &last); err != nil {
 			return nil, err
 		}
 		d.FirstSeen = time.Unix(first, 0)

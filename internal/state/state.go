@@ -20,6 +20,7 @@ type Presence struct {
 	Label    string
 	Owner    string
 	Vendor   string
+	Hostname string
 	LastIP   string
 	LastSeen time.Time
 	Home     bool
@@ -85,7 +86,7 @@ func (m *Machine) Observe(ctx context.Context, sightings []scanner.Sighting) []s
 
 	var newDevices []scanner.Sighting
 	for _, s := range sightings {
-		isNew, err := m.st.UpsertSighting(ctx, s.MAC, s.IP, s.Vendor, s.TS)
+		isNew, err := m.st.UpsertSighting(ctx, s.MAC, s.IP, s.Vendor, s.Hostname, s.TS)
 		if err != nil {
 			m.log.Error().Err(err).Str("mac", s.MAC).Msg("upsert")
 			continue
@@ -188,6 +189,7 @@ func (m *Machine) Snapshot(ctx context.Context) (Snapshot, error) {
 			Label:    d.Label,
 			Owner:    d.Owner,
 			Vendor:   d.Vendor,
+			Hostname: d.Hostname,
 			LastIP:   d.LastIP,
 			LastSeen: ls,
 			Home:     m.homeFlag[d.MAC],

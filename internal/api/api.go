@@ -56,6 +56,7 @@ type presenceJSON struct {
 	Label    string `json:"label"`
 	Owner    string `json:"owner"`
 	Vendor   string `json:"vendor"`
+	Hostname string `json:"hostname"`
 	LastIP   string `json:"last_ip"`
 	LastSeen string `json:"last_seen"`
 }
@@ -86,6 +87,7 @@ type deviceJSON struct {
 	Label     string `json:"label"`
 	Owner     string `json:"owner"`
 	Vendor    string `json:"vendor"`
+	Hostname  string `json:"hostname"`
 	LastIP    string `json:"last_ip"`
 	FirstSeen string `json:"first_seen"`
 	LastSeen  string `json:"last_seen"`
@@ -115,6 +117,7 @@ func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
 			Label:     d.Label,
 			Owner:     d.Owner,
 			Vendor:    d.Vendor,
+			Hostname:  d.Hostname,
 			LastIP:    d.LastIP,
 			FirstSeen: tsOrEmpty(d.FirstSeen),
 			LastSeen:  tsOrEmpty(d.LastSeen),
@@ -236,6 +239,7 @@ func toJSON(p state.Presence) presenceJSON {
 		Label:    p.Label,
 		Owner:    p.Owner,
 		Vendor:   p.Vendor,
+		Hostname: p.Hostname,
 		LastIP:   p.LastIP,
 		LastSeen: tsOrEmpty(p.LastSeen),
 	}

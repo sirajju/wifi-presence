@@ -72,7 +72,7 @@ var ouiTable = map[string]string{
 	"00:1B:21": "Intel", "00:1E:67": "Intel", "00:24:D7": "Intel", "0C:84:DC": "Intel",
 	"34:F6:4B": "Intel", "48:51:B7": "Intel", "48:F1:7F": "Intel", "68:07:15": "Intel",
 	"74:E5:0B": "Intel", "8C:16:45": "Intel", "9C:FC:E8": "Intel", "A0:88:69": "Intel",
-	"A0:C5:89": "Intel", "AC:72:89": "Intel", "B4:B6:76": "Intel", "DC:A6:32": "Intel",
+	"A0:C5:89": "Intel", "AC:72:89": "Intel", "B4:B6:76": "Intel",
 
 	// Raspberry Pi Foundation
 	"28:CD:C1": "Raspberry Pi", "B8:27:EB": "Raspberry Pi", "D8:3A:DD": "Raspberry Pi",
